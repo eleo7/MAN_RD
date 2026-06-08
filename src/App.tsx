@@ -806,23 +806,24 @@ export default function App() {
 
   const executeDeleteItem = async (itemId: string) => {
     pushToHistory(items);
+    
     const filtered = items.filter((item) => item.id !== itemId);
     setItems(filtered);
     localStorage.setItem('notion_offline_cache', JSON.stringify(filtered));
-
+    
     if (selectedItem && selectedItem.id === itemId) {
       setSelectedItem(null);
     }
-
+    setDeleteConfirmId(null);
+    
     if (currentUser && currentUser.uid !== 'guest_user') {
       try {
         const docRef = doc(db, 'agendaItems', itemId);
         await deleteDoc(docRef);
       } catch (error) {
-        console.warn("Working offline. Cached deletion locally.", error);
+        console.warn("Trabalhando offline. Exclusão salva no cache.", error);
       }
     }
-    setDeleteConfirmId(null);
   };
 
   // Checklist utilities
