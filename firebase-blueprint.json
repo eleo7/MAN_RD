@@ -1,0 +1,81 @@
+{
+  "entities": {
+    "agendaItem": {
+      "title": "Agenda Item",
+      "description": "A Notion-style agenda item with linked tasks, priority tags, geolocation, notes, and photos.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier of the item"
+        },
+        "title": {
+          "type": "string",
+          "description": "Name or title of the item (e.g., SI/OSE/AL format)"
+        },
+        "semana": {
+          "type": "number",
+          "description": "The week number of the item"
+        },
+        "date": {
+          "type": "string",
+          "description": "Date associated with the item (YYYY-MM-DD)"
+        },
+        "status": {
+          "type": "string",
+          "description": "Current status (e.g., PROGRAMADO, REPROGRAMADO, CONCLUIDO, PENDENTE)"
+        },
+        "quant": {
+          "type": "number",
+          "description": "Optional quantity value"
+        },
+        "priority": {
+          "type": "string",
+          "description": "Priority tag (Alta, Media, Baixa)"
+        },
+        "location": {
+          "type": "object",
+          "description": "Optional coordinate and name representing geolocation"
+        },
+        "tasks": {
+          "type": "array",
+          "description": "List of checkboxes/subtasks linked with the date/item"
+        },
+        "photos": {
+          "type": "array",
+          "description": "List of base64 images or image URLs attached to the item"
+        },
+        "notes": {
+          "type": "string",
+          "description": "Long-form details or description (Notion style)"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Timestamp when created"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Timestamp when last updated"
+        },
+        "ownerId": {
+          "type": "string",
+          "description": "Identifier of the user who owns this item"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "date",
+        "status",
+        "priority",
+        "tasks"
+      ]
+    }
+  },
+  "firestore": {
+    "agendaItems/{itemId}": {
+      "schema": "agendaItem",
+      "description": "Collection of all items inside the agenda"
+    }
+  }
+}

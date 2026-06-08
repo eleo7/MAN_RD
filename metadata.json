@@ -1,0 +1,6 @@
+{
+  "name": "Manutenção Goiânia RD",
+  "description": "Controle estilo Notion com cronograma como agenda, lista de tarefas por data, etiquetas de prioridade, visualizações em tabela, calendário, gráficos, captura de tela e fotos com sincronização em tempo real.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
