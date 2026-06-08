@@ -6,68 +6,24 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
-    // Modern SDK / Auth checks and basic validation helpers
-    function isSignedIn() {
-      return request.auth != null;
-    }
-
-    function isOwner(existingData) {
-      return isSignedIn() && existingData.ownerId == request.auth.uid;
-    }
-
-    function isValidId(id) {
-      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
-    }
-
-    function incoming() {
-      return request.resource.data;
-    }
-
-    function existing() {
-      return resource.data;
-    }
-
-    // Helper to validate the structure of an Agenda Item
-    function isValidAgendaItem(data) {
-      return data.id is string
-        && data.title is string
-        && data.title.size() <= 200
-        && data.date is string
-        && data.date.size() <= 64
-        && data.status is string
-        && (data.status == 'PROGRAMADO' || data.status == 'REPROGRAMADO' || data.status == 'CONCLUIDO' || data.status == 'PENDENTE')
-        && data.priority is string
-        && (data.priority == 'Alta' || data.priority == 'Media' || data.priority == 'Baixa')
-        && data.tasks is list
-        && data.tasks.size() <= 100
-        && data.ownerId is string
-        && data.ownerId == request.auth.uid;
-    }
-
     // Rules for agendaItems collection
     match /agendaItems/{itemId} {
       // Create request validation
-      allow create: if isSignedIn()
-        && isValidId(itemId)
-        && isValidAgendaItem(incoming())
-        && incoming().createdAt == request.time;
+      allow create: if request.auth != null
+        && request.resource.data.ownerId == request.auth.uid;
 
       // Update validation
-      allow update: if isSignedIn()
-        && isOwner(existing())
-        && isValidAgendaItem(incoming())
-        && incoming().updatedAt == request.time
-        && incoming().ownerId == existing().ownerId
-        && incoming().createdAt == existing().createdAt;
+      allow update: if request.auth != null
+        && resource.data.ownerId == request.auth.uid
+        && request.resource.data.ownerId == request.auth.uid;
 
       // Delete validation
-      allow delete: if isSignedIn()
-        && isOwner(existing());
+      allow delete: if request.auth != null
+        && resource.data.ownerId == request.auth.uid;
 
       // Get & List views (read)
-      // Allow user to see their own items. Also allow reading items marked as isPublic for sharing.
-      allow get: if isSignedIn() && (existing().ownerId == request.auth.uid || existing().isPublic == true);
-      allow list: if isSignedIn() && (existing().ownerId == request.auth.uid || existing().isPublic == true);
+      allow get, list: if request.auth != null
+        && (resource.data.ownerId == request.auth.uid || resource.data.isPublic == true);
     }
   }
 }

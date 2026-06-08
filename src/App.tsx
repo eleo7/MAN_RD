@@ -63,6 +63,18 @@ import html2canvas from 'html2canvas';
 
 type ActiveTab = 'table' | 'calendar' | 'charts';
 
+function getNumericTime(val: any): number {
+  if (!val) return 0;
+  if (typeof val === 'object' && val !== null && 'seconds' in val) {
+    return val.seconds * 1000 + Math.floor((val.nanoseconds || 0) / 1000000);
+  }
+  if (typeof val === 'object' && val !== null && 'toDate' in val && typeof val.toDate === 'function') {
+    return val.toDate().getTime();
+  }
+  const t = new Date(val).getTime();
+  return isNaN(t) ? 0 : t;
+}
+
 export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -209,9 +221,24 @@ export default function App() {
 
   // 4. Real-time Firestore Sync for Authenticated User
   useEffect(() => {
+    if (authLoading) return;
+
     if (!currentUser) {
       if (!new URLSearchParams(window.location.search).get('item')) {
         setItems([]);
+      }
+      return;
+    }
+
+    if (currentUser.uid === 'guest_user') {
+      const cached = localStorage.getItem('notion_offline_cache');
+      if (cached) {
+        try {
+          const cachedItems = JSON.parse(cached) as AgendaItem[];
+          setItems(cachedItems);
+        } catch (e) {
+          console.warn("Failed to load offline cache in guest mode", e);
+        }
       }
       return;
     }
@@ -227,8 +254,48 @@ export default function App() {
         fetched.push({ ...doc.data() as AgendaItem, id: doc.id });
       });
       
+      // Find any items in local storage belonging to the current user
+      const cached = localStorage.getItem('notion_offline_cache');
+      let finalItems: AgendaItem[] = [];
+      let unsyncedLocalItems: AgendaItem[] = [];
+
+      if (cached) {
+        try {
+          const cachedItems = JSON.parse(cached) as AgendaItem[];
+          const cachedMap = new Map(cachedItems.filter(Boolean).map(item => [item.id, item]));
+          const fetchedIds = new Set(fetched.map(i => i.id));
+
+          // 1. Process fetched items: if cache has a newer version, use that.
+          finalItems = fetched.map(fetchedItem => {
+            const cachedItem = cachedMap.get(fetchedItem.id);
+            if (cachedItem) {
+              const fetchedTime = getNumericTime(fetchedItem.updatedAt);
+              const cachedTime = getNumericTime(cachedItem.updatedAt);
+              if (cachedTime > fetchedTime) {
+                return cachedItem;
+              }
+            }
+            return fetchedItem;
+          });
+          
+          // 2. Filter items belonging to the current user that don't exist in the Firestore fetched collection yet
+          unsyncedLocalItems = cachedItems.filter(item => 
+            item && item.ownerId === currentUser.uid && !fetchedIds.has(item.id)
+          );
+          
+          if (unsyncedLocalItems.length > 0) {
+            finalItems = [...finalItems, ...unsyncedLocalItems];
+          }
+        } catch (e) {
+          console.warn("Could not read local cache for merge comparison:", e);
+          finalItems = [...fetched];
+        }
+      } else {
+        finalItems = [...fetched];
+      }
+
       // Sort items by orderIndex ascending first (if exists), then by date descending
-      fetched.sort((a, b) => {
+      finalItems.sort((a, b) => {
         if (a.orderIndex !== undefined && b.orderIndex !== undefined) {
           return a.orderIndex - b.orderIndex;
         }
@@ -237,14 +304,42 @@ export default function App() {
         return new Date(b.date).getTime() - new Date(a.date).getTime();
       });
       
-      setItems(fetched);
-      localStorage.setItem('notion_offline_cache', JSON.stringify(fetched));
+      setItems(finalItems);
+      localStorage.setItem('notion_offline_cache', JSON.stringify(finalItems));
+
+      // Asynchronously upload any unsynced items to Firestore so they are saved to the remote database
+      if (unsyncedLocalItems.length > 0) {
+        unsyncedLocalItems.forEach(async (item) => {
+          try {
+            const docRef = doc(db, 'agendaItems', item.id);
+            await setDoc(docRef, {
+              ...item,
+              createdAt: item.createdAt || serverTimestamp(),
+              updatedAt: serverTimestamp()
+            });
+            console.log(`Synchronized offline item ${item.id} to your Firestore.`);
+          } catch (writeErr) {
+            console.warn(`Background sync failed for item ${item.id}`, writeErr);
+          }
+        });
+      }
     }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'agendaItems');
+      console.warn("Firestore sync warning (running in offline fallback mode):", error.message);
+      // Fallback safely to localStorage data when unauthorized or offline
+      const cached = localStorage.getItem('notion_offline_cache');
+      if (cached) {
+        try {
+          const cachedItems = JSON.parse(cached) as AgendaItem[];
+          const userItems = cachedItems.filter(item => item && item.ownerId === currentUser.uid);
+          setItems(userItems);
+        } catch (e) {
+          console.error("Failed to restore items from fallback cache:", e);
+        }
+      }
     });
 
     return unsubscribe;
-  }, [currentUser]);
+  }, [currentUser, authLoading]);
 
   // Auth logins
   const handleLogin = async () => {
@@ -276,7 +371,7 @@ export default function App() {
   // UNDO / REDO / CLEAR DATA ACTIONS
   // ---------------------------------------------------------------------------
   const syncUndoRedoToFirestore = async (oldItems: AgendaItem[], newItems: AgendaItem[]) => {
-    if (!currentUser) return;
+    if (!currentUser || currentUser.uid === 'guest_user') return;
     const oldMap = new Map(oldItems.map(item => [item.id, item]));
     const newMap = new Map(newItems.map(item => [item.id, item]));
     const promises = [];
@@ -424,16 +519,18 @@ export default function App() {
       localStorage.setItem('notion_offline_cache', JSON.stringify(merged));
 
       // Synchronize in background with Firestore
-      const promises = fullItems.map(async (newItem) => {
-        const docRef = doc(db, 'agendaItems', newItem.id);
-        return setDoc(docRef, {
-          ...newItem,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp()
+      if (currentUser.uid !== 'guest_user') {
+        const promises = fullItems.map(async (newItem) => {
+          const docRef = doc(db, 'agendaItems', newItem.id);
+          return setDoc(docRef, {
+            ...newItem,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp()
+          });
         });
-      });
 
-      await Promise.all(promises);
+        await Promise.all(promises);
+      }
 
       setExcelMessage({
         text: `Sucesso! Planilha importada. ${fullItems.length} registros inseridos com sucesso no seu cronograma.`,
@@ -538,7 +635,7 @@ export default function App() {
       tasks: initialData?.tasks || [],
       photos: initialData?.photos || [],
       notes: initialData?.notes || '',
-      ownerId: currentUser.uid,
+      ownerId: currentUser?.uid || 'guest_user',
       isPublic: initialData?.isPublic || false,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
@@ -568,16 +665,18 @@ export default function App() {
       }
     }
 
-    try {
-      // Create document in Firestore
-      const docRef = doc(db, 'agendaItems', itemId);
-      await setDoc(docRef, {
-        ...newItem,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
-      });
-    } catch (error) {
-      console.warn("Saving offline. Firestore write failed or delayed.", error);
+    if (currentUser && currentUser.uid !== 'guest_user') {
+      try {
+        // Create document in Firestore
+        const docRef = doc(db, 'agendaItems', itemId);
+        await setDoc(docRef, {
+          ...newItem,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        });
+      } catch (error) {
+        console.warn("Saving offline. Firestore write failed or delayed.", error);
+      }
     }
   };
 
@@ -655,14 +754,16 @@ export default function App() {
       setSelectedItem({ ...selectedItem, ...updatePayload });
     }
 
-    try {
-      const docRef = doc(db, 'agendaItems', itemId);
-      await updateDoc(docRef, {
-        ...updatePayload,
-        updatedAt: serverTimestamp()
-      });
-    } catch (error) {
-      console.warn("Working offline. Cached changes locally.", error);
+    if (currentUser && currentUser.uid !== 'guest_user') {
+      try {
+        const docRef = doc(db, 'agendaItems', itemId);
+        await updateDoc(docRef, {
+          ...updatePayload,
+          updatedAt: serverTimestamp()
+        });
+      } catch (error) {
+        console.warn("Working offline. Cached changes locally.", error);
+      }
     }
   };
 
@@ -678,17 +779,19 @@ export default function App() {
     setItems(withNewOrder);
     localStorage.setItem('notion_offline_cache', JSON.stringify(withNewOrder));
 
-    try {
-      const promises = withNewOrder.map((item) => {
-        const docRef = doc(db, 'agendaItems', item.id);
-        return updateDoc(docRef, {
-          orderIndex: item.orderIndex,
-          updatedAt: serverTimestamp()
+    if (currentUser && currentUser.uid !== 'guest_user') {
+      try {
+        const promises = withNewOrder.map((item) => {
+          const docRef = doc(db, 'agendaItems', item.id);
+          return updateDoc(docRef, {
+            orderIndex: item.orderIndex,
+            updatedAt: serverTimestamp()
+          });
         });
-      });
-      await Promise.all(promises);
-    } catch (error) {
-      console.warn("Error updating order in Firestore", error);
+        await Promise.all(promises);
+      } catch (error) {
+        console.warn("Error updating order in Firestore", error);
+      }
     }
   };
 
@@ -708,11 +811,13 @@ export default function App() {
       setSelectedItem(null);
     }
 
-    try {
-      const docRef = doc(db, 'agendaItems', itemId);
-      await deleteDoc(docRef);
-    } catch (error) {
-      console.warn("Working offline. Cached deletion locally.", error);
+    if (currentUser && currentUser.uid !== 'guest_user') {
+      try {
+        const docRef = doc(db, 'agendaItems', itemId);
+        await deleteDoc(docRef);
+      } catch (error) {
+        console.warn("Working offline. Cached deletion locally.", error);
+      }
     }
     setDeleteConfirmId(null);
   };
@@ -986,6 +1091,29 @@ export default function App() {
           >
             <LogIn size={16} />
             <span>Entrar com Conta do Google</span>
+          </button>
+
+          <div className="relative flex py-2 items-center w-full my-1">
+            <div className="flex-grow border-t border-[#EDEDEB]"></div>
+            <span className="flex-shrink mx-4 text-[10px] text-[#A4A4A2] font-semibold uppercase tracking-wider">ou</span>
+            <div className="flex-grow border-t border-[#EDEDEB]"></div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              setCurrentUser({
+                uid: "guest_user",
+                email: "souzaleonardo005@gmail.com",
+                displayName: "Leonardo Neres (Temporário)",
+                photoURL: null
+              } as any);
+              setAuthLoading(false);
+            }}
+            className="w-full py-3 border border-[#EDEDEB] hover:bg-[#F7F7F5] bg-white text-[#37352F] font-semibold rounded-lg text-sm transition-all flex items-center justify-center gap-2.5 shadow-xs hover:scale-[1.01] active:scale-[0.99] cursor-pointer"
+          >
+            <WifiOff size={16} className="text-amber-500" />
+            <span>Continuar em Modo Convidado (Offline)</span>
           </button>
 
           <div className="text-center font-mono opacity-40 text-[9px] mt-6 tracking-wider text-[#A4A4A2]">
