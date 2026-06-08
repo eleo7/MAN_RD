@@ -1093,29 +1093,6 @@ export default function App() {
             <span>Entrar com Conta do Google</span>
           </button>
 
-          <div className="relative flex py-2 items-center w-full my-1">
-            <div className="flex-grow border-t border-[#EDEDEB]"></div>
-            <span className="flex-shrink mx-4 text-[10px] text-[#A4A4A2] font-semibold uppercase tracking-wider">ou</span>
-            <div className="flex-grow border-t border-[#EDEDEB]"></div>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => {
-              setCurrentUser({
-                uid: "guest_user",
-                email: "souzaleonardo005@gmail.com",
-                displayName: "Leonardo Neres (Temporário)",
-                photoURL: null
-              } as any);
-              setAuthLoading(false);
-            }}
-            className="w-full py-3 border border-[#EDEDEB] hover:bg-[#F7F7F5] bg-white text-[#37352F] font-semibold rounded-lg text-sm transition-all flex items-center justify-center gap-2.5 shadow-xs hover:scale-[1.01] active:scale-[0.99] cursor-pointer"
-          >
-            <WifiOff size={16} className="text-amber-500" />
-            <span>Continuar em Modo Convidado (Offline)</span>
-          </button>
-
           <div className="text-center font-mono opacity-40 text-[9px] mt-6 tracking-wider text-[#A4A4A2]">
             CRIADOR DO SISTEMA - LEONARDO NERES
           </div>
