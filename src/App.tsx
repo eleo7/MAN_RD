@@ -442,19 +442,22 @@ export default function App() {
     pushToHistory(items);
     
     const itemsToClear = [...items];
+    
     setItems([]);
     localStorage.setItem('notion_offline_cache', JSON.stringify([]));
     setClearDataConfirm(false);
     setSelectedItem(null);
     
-    try {
-      const promises = itemsToClear.map((item) => {
-        const docRef = doc(db, 'agendaItems', item.id);
-        return deleteDoc(docRef);
-      });
-      await Promise.all(promises);
-    } catch (error) {
-      console.warn("Working offline. Cleared elements locally.", error);
+    if (currentUser.uid !== 'guest_user') {
+      try {
+        const promises = itemsToClear.map((item) => {
+          const docRef = doc(db, 'agendaItems', item.id);
+          return deleteDoc(docRef);
+        });
+        await Promise.all(promises);
+      } catch (error) {
+        console.warn("Trabalhando offline. Limpeza local mantida.", error);
+      }
     }
   };
 
