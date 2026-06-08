@@ -1,10 +1,23 @@
-{
-  "projectId": "man-rd",
-  "appId": "1:713556338914:web:e3d45ebfa6ce22205f96bb",
-  "apiKey": "AIzaSyCayCUPWUnlrsuHkCPkWUAFqKqgsmA_rGE",
-  "authDomain": "man-rd.firebaseapp.com",
-  "firestoreDatabaseId": "ai-studio-a215d68e-f3a8-4abc-aee4-87ede5d08e9a",
-  "storageBucket": "man-rd.firebasestorage.app",
-  "messagingSenderId": "713556338914",
-  "measurementId": "G-B8BT9RGJVS"
-}
+import { initializeApp } from "firebase/app";
+import { getAuth } from "firebase/auth";
+import { getFirestore } from "firebase/firestore"; // <--- Linha nova para o Banco de Dados
+
+const firebaseConfig = {
+  projectId: "man-rd",
+  appId: "1:713556338914:web:e3d45ebfa6ce22205f96bb",
+  apiKey: "AIzaSyCayCUPWUnlrsuHkCPkWUAFqKqgsmA_rGE",
+  authDomain: "man-rd.firebaseapp.com",
+  firestoreDatabaseId: "ai-studio-a215d68e-f3a8-4abc-aee4-87ede5d08e9a",
+  storageBucket: "man-rd.firebasestorage.app",
+  messagingSenderId: "713556338914",
+  measurementId: "G-B8BT9RGJVS"
+};
+
+// Inicializa o Firebase
+const app = initializeApp(firebaseConfig);
+
+// Inicializa e exporta a Autenticação (Login) que já funcionava
+export const auth = getAuth(app);
+
+// Inicializa e exporta o Banco de Dados (Firestore) que acabamos de criar
+export const db = getFirestore(app);
