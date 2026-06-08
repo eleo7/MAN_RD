@@ -253,49 +253,9 @@ export default function App() {
       snapshot.forEach((doc) => {
         fetched.push({ ...doc.data() as AgendaItem, id: doc.id });
       });
-      
-      // Find any items in local storage belonging to the current user
-      const cached = localStorage.getItem('notion_offline_cache');
-      let finalItems: AgendaItem[] = [];
-      let unsyncedLocalItems: AgendaItem[] = [];
 
-      if (cached) {
-        try {
-          const cachedItems = JSON.parse(cached) as AgendaItem[];
-          const cachedMap = new Map(cachedItems.filter(Boolean).map(item => [item.id, item]));
-          const fetchedIds = new Set(fetched.map(i => i.id));
-
-          // 1. Process fetched items: if cache has a newer version, use that.
-          finalItems = fetched.map(fetchedItem => {
-            const cachedItem = cachedMap.get(fetchedItem.id);
-            if (cachedItem) {
-              const fetchedTime = getNumericTime(fetchedItem.updatedAt);
-              const cachedTime = getNumericTime(cachedItem.updatedAt);
-              if (cachedTime > fetchedTime) {
-                return cachedItem;
-              }
-            }
-            return fetchedItem;
-          });
-          
-          // 2. Filter items belonging to the current user that don't exist in the Firestore fetched collection yet
-          unsyncedLocalItems = cachedItems.filter(item => 
-            item && item.ownerId === currentUser.uid && !fetchedIds.has(item.id)
-          );
-          
-          if (unsyncedLocalItems.length > 0) {
-            finalItems = [...finalItems, ...unsyncedLocalItems];
-          }
-        } catch (e) {
-          console.warn("Could not read local cache for merge comparison:", e);
-          finalItems = [...fetched];
-        }
-      } else {
-        finalItems = [...fetched];
-      }
-
-      // Sort items by orderIndex ascending first (if exists), then by date descending
-      finalItems.sort((a, b) => {
+      // Organiza a ordem das atividades
+      fetched.sort((a, b) => {
         if (a.orderIndex !== undefined && b.orderIndex !== undefined) {
           return a.orderIndex - b.orderIndex;
         }
@@ -304,38 +264,11 @@ export default function App() {
         return new Date(b.date).getTime() - new Date(a.date).getTime();
       });
       
-      setItems(finalItems);
-      localStorage.setItem('notion_offline_cache', JSON.stringify(finalItems));
+      setItems(fetched);
+      localStorage.setItem('notion_offline_cache', JSON.stringify(fetched));
 
-      // Asynchronously upload any unsynced items to Firestore so they are saved to the remote database
-      if (unsyncedLocalItems.length > 0) {
-        unsyncedLocalItems.forEach(async (item) => {
-          try {
-            const docRef = doc(db, 'agendaItems', item.id);
-            await setDoc(docRef, {
-              ...item,
-              createdAt: item.createdAt || serverTimestamp(),
-              updatedAt: serverTimestamp()
-            });
-            console.log(`Synchronized offline item ${item.id} to your Firestore.`);
-          } catch (writeErr) {
-            console.warn(`Background sync failed for item ${item.id}`, writeErr);
-          }
-        });
-      }
     }, (error) => {
-      console.warn("Firestore sync warning (running in offline fallback mode):", error.message);
-      // Fallback safely to localStorage data when unauthorized or offline
-      const cached = localStorage.getItem('notion_offline_cache');
-      if (cached) {
-        try {
-          const cachedItems = JSON.parse(cached) as AgendaItem[];
-          const userItems = cachedItems.filter(item => item && item.ownerId === currentUser.uid);
-          setItems(userItems);
-        } catch (e) {
-          console.error("Failed to restore items from fallback cache:", e);
-        }
-      }
+      console.warn("Aviso de sincronização do Firestore (offline):", error.message);
     });
 
     return unsubscribe;
