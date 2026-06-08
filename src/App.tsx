@@ -132,6 +132,9 @@ export default function App() {
   
   // Toast alert for duplicate lines
   const [duplicateToast, setDuplicateToast] = useState<{ id: string; title: string; date: string } | null>(null);
+  
+  // Auth error message state
+  const [authError, setAuthError] = useState<string | null>(null);
 
   // Auto-dismiss duplicate toast
   useEffect(() => {
@@ -246,9 +249,15 @@ export default function App() {
   // Auth logins
   const handleLogin = async () => {
     try {
+      setAuthError(null);
       await signInWithPopup(auth, googleProvider);
-    } catch (e) {
+    } catch (e: any) {
       console.error("Authentication failed", e);
+      if (e?.code === 'auth/unauthorized-domain' || e?.message?.includes('unauthorized-domain')) {
+        setAuthError("Erro: Este domínio não está autorizado no Authentication do seu projeto Firebase 'man-rd'. Por favor, adicione '" + window.location.hostname + "' na lista de Domínios Autorizados em seu Console do Firebase para permitir logins.");
+      } else {
+        setAuthError(e?.message || String(e));
+      }
     }
   };
 
@@ -942,31 +951,34 @@ export default function App() {
             ⚡
           </div>
 
-          <h1 className="text-xl font-extrabold text-[#37352F] text-center tracking-tight mb-1 uppercase">
+          <h1 className="text-xl font-extrabold text-[#37352F] text-center tracking-tight mb-6 uppercase">
             Manutenção Goiânia RD
           </h1>
-          <p className="text-[10px] text-[#A4A4A2] font-sans tracking-wide text-center uppercase font-bold mb-6">
-            Placa de Cronogramas e Agendas Estilo Notion
-          </p>
 
           <div className="w-full space-y-4 mb-8 bg-[#F7F7F5] p-4 rounded-lg border border-[#EDEDEB] text-left text-xs text-[#37352F]">
             <div className="flex items-start gap-2.5">
               <Check className="text-emerald-600 shrink-0 mt-0.5" size={14} />
-              <span>Cronograma com agenda semanal integrado por dados</span>
+              <span>Controle de programação</span>
             </div>
             <div className="flex items-start gap-2.5">
               <Check className="text-emerald-600 shrink-0 mt-0.5" size={14} />
-              <span>Checklists inline, prioridades e suporte a fotos offline</span>
+              <span>Gráfico de desempenho</span>
             </div>
             <div className="flex items-start gap-2.5">
               <Check className="text-emerald-600 shrink-0 mt-0.5" size={14} />
-              <span>Gráficos ricos e modo visualizador em calendário</span>
-            </div>
-            <div className="flex items-start gap-2.5">
-              <Check className="text-emerald-600 shrink-0 mt-0.5" size={14} />
-              <span>Acesso Offline completo e Real-time Sharing entre parceiros</span>
+              <span>Agenda semanal</span>
             </div>
           </div>
+
+          {authError && (
+            <div className="w-full p-4 mb-5 rounded-xl bg-red-50 border border-red-200 text-red-900 text-xs leading-relaxed flex items-start gap-3 shadow-inner">
+              <AlertCircle size={16} className="text-red-500 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-bold uppercase tracking-wider text-[10px] text-red-700 mb-1">Erro de Autenticação</p>
+                <span>{authError}</span>
+              </div>
+            </div>
+          )}
 
           <button
             onClick={handleLogin}
@@ -977,7 +989,7 @@ export default function App() {
           </button>
 
           <div className="text-center font-mono opacity-40 text-[9px] mt-6 tracking-wider text-[#A4A4A2]">
-            GOOGLE FIREBASE SECURE CLOUD SANDBOX
+            CRIADOR DO SISTEMA - LEONARDO NERES
           </div>
         </div>
       </div>

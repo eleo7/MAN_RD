@@ -63,7 +63,7 @@ export async function testConnection() {
     await getDocFromServer(doc(db, 'test', 'connection'));
   } catch (error) {
     if (error instanceof Error && error.message.includes('the client is offline')) {
-      console.error("Please check your Firebase configuration or network status.");
+      console.warn("Information: Firebase client is currently offline or domain is unauthorized. Please verify your custom settings on your final hosting platform (e.g., Vercel).");
     }
   }
 }
